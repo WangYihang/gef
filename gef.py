@@ -64,6 +64,7 @@ import collections
 import ctypes
 import functools
 import getopt
+import glob
 import hashlib
 import importlib
 import inspect
@@ -10353,6 +10354,29 @@ class GefTmuxSetup(gdb.Command):
         os.unlink(tty_path)
         return
 
+def setup_glibc_source_code():
+    if is_64bit():
+        virtual_path = "/lib/x86_64-linux-gnu/libc.so.6"
+    elif is_32bit():
+        virtual_path = "/lib32/libc.so.6"
+    else:
+        return []
+    if not os.path.exists(virtual_path):
+        return []
+    glibc_version = subprocess.check_output(virtual_path).split(b"GLIBC ")[1].split(b"-")[0]
+    glibc_base_path = "/usr/src/glibc"
+    glibc_tar_xz_path = "{}/glibc-{}.tar.xz".format(glibc_base_path, str(glibc_version, encoding="utf-8"))
+    glibc_folder = "{}/glibc-{}".format(glibc_base_path, str(glibc_version, encoding="utf-8"))
+    txe = os.path.exists(glibc_tar_xz_path)
+    fe = os.path.exists(glibc_folder)
+    if not txe and not fe:
+        gef_print("Loading glibc source code failed, please install glibc-source using command: `{:s}`, then restart gdb."
+                  .format(Color.colorify("sudo apt install glibc-source", "underline pink")))
+        return []
+    if txe and not fe:
+        os.system("sudo tar -xf {} -C {}".format(glibc_tar_xz_path, glibc_base_path))
+    glibc_folders = glob.glob("{}/**/*".format(glibc_folder), recursive=True)
+    return [i for i in glibc_folders if os.path.isdir(i)]
 
 def __gef_prompt__(current_prompt):
     """GEF custom prompt function."""
@@ -10431,3 +10455,8 @@ if __name__  == "__main__":
 
         GefAliases()
         GefTmuxSetup()
+
+        # setup libc source code
+        folders = setup_glibc_source_code()
+        for folder in folders:
+            gdb.execute("dir {}".format(folder))
